@@ -3,31 +3,51 @@
 #include <string.h>
 #include <mpi.h>
 
-
 int main(int argc, char *argv[]) {
-    MPI_Init(&argc, &argv);
-    int size, rank;
-    MPI_Comm_size(MPI_COMM_WORLD, &size);
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    int count = 5;
-    char rbuf[count];
-    for (int i = 0; i < 5; i ++) {
-        rbuf[i] = '\0';
-    }
-    if (rank == 0) {
-        MPI_Send(rbuf, count, MPI_CHAR, 1, 0, MPI_COMM_WORLD);
-        MPI_Recv(rbuf, count, MPI_CHAR, 2, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        printf("%s\n", rbuf);    
-    }
-    if (rank == 1) {
-        MPI_Recv(rbuf, count, MPI_CHAR, 0, 1, MPI_COMM_WORLD);
-        rbuf[0] = 'h';
-        MPI_Send(rbuf, count, MPI_CHAR, 2, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-    }
-    if (rank == 2) {
-        MPI_Recv(rbuf, count, MPI_CHAR, 1, 2, MPI_COMM_WORLD);
-        rbuf[1] = 'i';
-        MPI_Send(rbuf, count, MPI_CHAR, 1, 2, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-    }
+  MPI_Init(&argc, &argv);
+
+  int rank, size;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+  if (rank == 0) {
+    printf("Telephone game with %d processes\n", size);
+  }
+
+  // Assume less than 61 ranks (printing A to tilde)
+  if ( size > 61 ) {
+    if (rank == 0) printf("Error: use less than 61 ranks\n");
     MPI_Finalize();
+    return EXIT_FAILURE;
+  }
+
+  // Everyone allocate an array of size chars
+  char *message = malloc(sizeof(char) * (size+1));
+  
+  // Null terminate the whole array
+  for (int i = 0; i < size+1; ++i)
+    message[i] = '\0';
+
+  // Everyone set their character
+  message[rank] = 'A'+rank;
+
+  // First rank sends to right-hand neighbour (rank 1), then receives from final rank
+  if (rank == 0) {
+    MPI_Send(message, 1, MPI_CHAR, 1, 99, MPI_COMM_WORLD);
+    MPI_Recv(message, size, MPI_CHAR, size-1, 99, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+  }
+  // Other ranks receive, then send to right-hand neighbour
+  else {
+    MPI_Recv(message, rank, MPI_CHAR, rank-1, 99, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    // The character was already set above
+    MPI_Send(message, rank+1, MPI_CHAR, (rank+1)%size, 99, MPI_COMM_WORLD);
+  }
+
+ 
+  if (rank == 0) {
+    printf("The message has %lu characters and says \"%s\"\n", strlen(message), message);
+  }
+
+  MPI_Finalize();
+  return EXIT_SUCCESS;
 }
